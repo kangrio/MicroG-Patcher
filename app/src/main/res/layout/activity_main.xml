@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/main"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    tools:context=".MainActivity">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <EditText
+            android:visibility="gone"
+            android:id="@+id/editTextPackageName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="App PackageName" />
+
+        <EditText
+            android:visibility="gone"
+            android:id="@+id/editTextVersionCode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Version Code" />
+
+        <Button
+            android:visibility="gone"
+            android:id="@+id/btn_patch"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:text="Patch" />
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <ListView
+                android:id="@+id/appDetailListView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+
+            <Button
+                android:id="@+id/btnSelectApk"
+                android:layout_width="wrap_content"
+                android:layout_height="50dp"
+                android:layout_gravity="end|bottom"
+                android:layout_margin="25dp"
+                android:text="Select Apk" />
+
+        </FrameLayout>
+
+
+    </LinearLayout>
+
+
+</LinearLayout>
