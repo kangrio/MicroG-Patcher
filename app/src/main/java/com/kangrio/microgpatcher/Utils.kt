@@ -11,7 +11,20 @@ import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import com.reandroid.apk.ApkModule
+import com.reandroid.apk.ApkUtil
+import com.reandroid.archive.ArchiveBytes
 import java.io.File
+import java.io.InputStream
+
+fun ApkModule.loadApkInputStream(apkInputStream: InputStream): ApkModule {
+    this.close()
+    val archive = ArchiveBytes(apkInputStream)
+    val apkModule = ApkModule(ApkUtil.DEF_MODULE_NAME, archive.createZipEntryMap())
+    apkModule.apkSignatureBlock = archive.apkSignatureBlock
+    apkModule.setCloseable(archive)
+    return apkModule
+}
 
 object Utils {
     val itemsHashmap = HashMap<Int, Package>()

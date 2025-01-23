@@ -5,17 +5,13 @@ import android.content.Intent
 import android.support.v4.content.FileProvider
 import android.util.Base64
 import android.util.Log
-import com.android.apksig.apk.ApkUtils
-import com.android.apksig.internal.apk.v2.V2SchemeVerifier
-import com.android.apksig.util.DataSources
-import com.android.apksig.util.RunnablesExecutor
 import com.kangrio.microgpatcher.MainActivity
+import com.kangrio.microgpatcher.loadApkInputStream
 import com.reandroid.apk.ApkModule
 import com.reandroid.app.AndroidManifest
 import com.reandroid.archive.ByteInputSource
+import com.reandroid.archive.block.SignatureId
 import com.reandroid.arsc.chunk.xml.ResXmlElement
-import org.jf.baksmali.BaksmaliOptions
-import org.jf.dexlib2.Opcodes
 import org.jf.dexlib2.dexbacked.DexBackedDexFile
 import org.jf.dexlib2.iface.ClassDef
 import org.jf.dexlib2.rewriter.ClassDefRewriter
@@ -23,35 +19,47 @@ import org.jf.dexlib2.rewriter.DexRewriter
 import org.jf.dexlib2.rewriter.Rewriter
 import org.jf.dexlib2.rewriter.RewriterModule
 import org.jf.dexlib2.rewriter.Rewriters
-import org.jf.dexlib2.writer.io.FileDataStore
+import org.jf.dexlib2.writer.io.MemoryDataStore
 import org.jf.dexlib2.writer.pool.DexPool
-import java.io.ByteArrayOutputStream
 import java.io.File
-import java.io.FileOutputStream
-import java.io.RandomAccessFile
+import java.io.InputStream
 
-class ApkPatcher(val context: Context, val apkFile: File) {
+class ApkPatcher {
     val TAG = "ApkPatch"
+    var context: Context
+    var patchDir: File
+    var apkFile: File
+    var apkModule: ApkModule
 
-    lateinit var apkModule: ApkModule
+    constructor(context: Context, apkInputStream: InputStream, fileName: String = "file.apk") {
+        this.context = context
+        this.apkModule = ApkModule().loadApkInputStream(apkInputStream)
+        apkInputStream.close()
+        this.patchDir = File(context.externalCacheDir, "patch")
+        this.apkFile = File(patchDir, fileName)
+    }
+
+    constructor(context: Context, apkFile: File) {
+        this.context = context
+        this.apkModule = ApkModule.loadApkFile(apkFile)
+        this.patchDir = File(context.externalCacheDir, "patch")
+        this.apkFile = apkFile
+    }
 
     fun startPatch() {
-        apkModule = ApkModule.loadApkFile(apkFile)
         MainActivity.updatePatchProgress("processing: AndroidManifest.xml")
-        patchAndroidManifest(getSignatureBase64(apkFile.absolutePath))
+        patchAndroidManifest(getSignatureBase64())
         addPatchedDexToApk()
         patchMicroG()
 
         MainActivity.updatePatchProgress("Writing apk file...")
-        val patchedApkFile = File(apkFile.parentFile, "patched_" + apkFile.name)
-        val outputStream = FileOutputStream(patchedApkFile)
-        apkModule.writeApk(outputStream)
-        outputStream.close()
+        val patchedApkFile = File(patchDir, "patched_" + apkFile.name)
+        apkModule.writeApk(patchedApkFile)
 
         MainActivity.updatePatchProgress("Signing apk file...")
         val signedApk = signApk(patchedApkFile)
         installApk(signedApk)
-        apkFile.parentFile.listFiles().forEach {
+        patchDir.listFiles()?.forEach {
             if (!it.name.contains("sign")) {
                 it.deleteRecursively()
             }
@@ -62,38 +70,28 @@ class ApkPatcher(val context: Context, val apkFile: File) {
         val dexInputStream = context.assets.open("classes.dex")
         val dexBytes = dexInputStream.readBytes()
 
-        var classesDexName = "classes${apkModule.listDexFiles().size + 1}.dex"
+        var classesDexName = "classes${apkModule.listDexFiles().filter { it.name.startsWith("classes") && !it.name.contains("/") }.size + 1}.dex"
         val classesDex =
             ByteInputSource(dexBytes, classesDexName)
         apkModule.add(classesDex)
     }
 
     fun patchMicroG() {
-        val modifiedStats = HashMap<Int, Boolean>()
-        apkModule.listDexFiles().forEachIndexed { index, dexFileInputSource ->
+        apkModule.listDexFiles().forEach { dexFileInputSource ->
             if (!dexFileInputSource.name.startsWith("classes")) {
-                return@forEachIndexed
+                return@forEach
             }
             MainActivity.updatePatchProgress("processing: ${dexFileInputSource.name}")
-            modifiedStats.put(index, false)
-            val outputStream = ByteArrayOutputStream()
-            dexFileInputSource.write(outputStream)
-            outputStream.close()
+            val outputStream = dexFileInputSource.openStream()
 
             val dexFileInput = DexBackedDexFile(
-                Opcodes.forApi(BaksmaliOptions().apiLevel),
-                outputStream.toByteArray()
+                null,
+                outputStream.readBytes()
             )
-
-            val outputDir = File(apkFile.parentFile.absolutePath, apkModule.packageName)
-
-            if (!outputDir.exists()) {
-                outputDir.mkdirs()
-            }
 
             Log.d(TAG, "Processing DEX file: ${dexFileInputSource.name}")
             modifyDex(dexFileInput, dexFileInputSource.name)
-            modifiedStats.remove(index)
+            outputStream.close()
         }
     }
 
@@ -148,33 +146,24 @@ class ApkPatcher(val context: Context, val apkFile: File) {
         val rewriter = DexRewriter(rewriterModule)
         val rewrittenDexFile = rewriter.dexFileRewriter.rewrite(dexFile)
 
-        dexFile.classes.forEach {
-            if (it.superclass == "Landroid/app/Application;") {
-                val dexPool = DexPool(rewrittenDexFile.getOpcodes())
-                val startTime = System.currentTimeMillis()
-                for (classDef in rewrittenDexFile.getClasses()) {
-                    dexPool.internClass(classDef)
-                }
-
-                val outputDexDir = File(apkFile.parentFile, apkModule.packageName)
-
-                if (!outputDexDir.exists()) {
-                    outputDexDir.mkdirs()
-                }
-
-                val outputDexFile = File(outputDexDir, outputDexName)
-
-                dexPool.writeTo(FileDataStore(outputDexFile))
-
-                val dexInputSources = ByteInputSource(outputDexFile.readBytes(), outputDexName)
-                apkModule.add(dexInputSources)
-
-                Log.d(
-                    TAG,
-                    "Modified DEX: $outputDexName, usedTime: ${System.currentTimeMillis() - startTime}ms"
-                )
-                return
+        dexFile.classes.find { it.superclass == "Landroid/app/Application;" }?.let {
+            val dexPool = DexPool(rewrittenDexFile.opcodes)
+            val startTime = System.currentTimeMillis()
+            for (classDef in rewrittenDexFile.classes) {
+                dexPool.internClass(classDef)
             }
+
+            val outputDexMemory = MemoryDataStore()
+            dexPool.writeTo(outputDexMemory)
+            val dexInputSources = ByteInputSource(outputDexMemory.data, outputDexName)
+            dexInputSources.write(File(patchDir, outputDexName))
+            apkModule.add(dexInputSources)
+
+            Log.d(
+                TAG,
+                "Modified DEX: $outputDexName, usedTime: ${System.currentTimeMillis() - startTime}ms"
+            )
+            return
         }
         Log.d(TAG, "Skip Modify DEX: $outputDexName")
     }
@@ -194,25 +183,16 @@ class ApkPatcher(val context: Context, val apkFile: File) {
         value.valueAsString = signatureData
     }
 
-    fun getSignatureBase64(apkFilePath: String): String {
-        val apkFile = File(apkFilePath)
-        val dataSource = DataSources.asDataSource(RandomAccessFile(apkFile.path, "r"))
-        val zipSections = ApkUtils.findZipSections(dataSource)
-        val v2 = V2SchemeVerifier.verify(
-            RunnablesExecutor.SINGLE_THREADED,
-            dataSource,
-            zipSections,
-            mapOf(2 to "APK Signature Scheme v2"),
-            hashSetOf(2),
-            24,
-            Int.MAX_VALUE
+    fun getSignatureBase64(): String {
+        return Base64.encodeToString(
+            apkModule.apkSignatureBlock.getSignature(SignatureId.V2).certificates.next().certificateBytes,
+            Base64.DEFAULT
         )
-        return Base64.encodeToString(v2.signers[0].certs[0].encoded, Base64.DEFAULT)
     }
 
     fun signApk(apkFile: File): File {
         val apkSigner = APKSigner(context)
-        val outputFile = File(apkFile.parentFile, apkFile.name.replace(".apk", "_sign.apk"))
+        val outputFile = File(patchDir, apkFile.name.replace(".apk", "_sign.apk"))
         apkSigner.sign(apkFile, outputFile)
         return outputFile
     }
@@ -226,6 +206,13 @@ class ApkPatcher(val context: Context, val apkFile: File) {
             apkUri,
             "application/vnd.android.package-archive"
         )
+        val packageInstallerLists = listOf("com.android.packageinstaller", "com.google.android.packageinstaller")
+        val installerPackager = packageInstallerLists.filter{
+            val i = Intent()
+            context.packageManager.resolveActivity(i, Intent.FLAG_ACTIVITY_NEW_TASK) != null
+        }.firstOrNull()
+
+        intent.setPackage(installerPackager)
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) // without this flag android returned a intent error!
         context.startActivity(intent)

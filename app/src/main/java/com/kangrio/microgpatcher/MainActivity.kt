@@ -32,6 +32,13 @@ class MainActivity : Activity() {
         private const val PERMISSION_FILE_REQUEST_CODE = 100
         private const val FILE_PICKER_REQUEST_CODE = 101
         lateinit var progressDialog: ProgressDialog
+        fun startDownloadProgress() {
+            Handler(Looper.getMainLooper()).post {
+                progressDialog.setMessage("Downloading...")
+                progressDialog.show()
+            }
+        }
+
         fun updatePatchProgress(progressName: String) {
             Handler(Looper.getMainLooper()).post {
                 progressDialog.setMessage(progressName)
@@ -65,7 +72,12 @@ class MainActivity : Activity() {
             }
         }
 
-
+        if(intent.type == "application/vnd.android.package-archive") {
+            val uri = intent.data
+            if(uri != null){
+                handleFileUri(uri)
+            }
+        }
     }
 
     fun customPackagePatch() {
@@ -133,13 +145,6 @@ class MainActivity : Activity() {
         }
     }
 
-    fun startDownloadProgress() {
-        Handler(Looper.getMainLooper()).post {
-            progressDialog.setMessage("Downloading...")
-            progressDialog.show()
-        }
-    }
-
     private fun openFilePicker() {
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
@@ -164,7 +169,7 @@ class MainActivity : Activity() {
     private fun handleFileUri(uri: Uri) {
         // Process the file URI
         Log.d(TAG, "File Selected: $uri")
-        val inputStream = contentResolver.openInputStream(uri)
+        val inputStream = contentResolver.openInputStream(uri)!!
 
         var fileName: String? = null
         val cursor: Cursor? = contentResolver.query(uri, null, null, null, null)
@@ -174,11 +179,13 @@ class MainActivity : Activity() {
             }
         }
 
-        val file = File(getExternalFilesDir("patch")!!.absolutePath, fileName)
-
-        if (!file.parentFile.exists()) {
-            file.parentFile.mkdirs()
+        val cacheDir = File(externalCacheDir, "patch").apply {
+            if(!exists()){
+                mkdirs()
+            }
         }
+
+        val file = File(cacheDir, fileName)
 
         if (file.exists()) {
             file.delete()
@@ -189,7 +196,7 @@ class MainActivity : Activity() {
             updatePatchProgress("Reading apk file...")
             val outputStream = FileOutputStream(file)
             try {
-                val inputSize = inputStream?.available()!! // Size of the target file
+                val inputSize = inputStream.available() // Size of the target file
                 val maxBufferSize = 5 * 1024 * 1024 // Maximum buffer size (5MB)
                 val defaultBufferSize = 64 * 1024 // Default buffer size (64KB)
 
