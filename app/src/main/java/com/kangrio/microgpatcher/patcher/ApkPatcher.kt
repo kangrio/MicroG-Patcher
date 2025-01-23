@@ -209,6 +209,7 @@ class ApkPatcher {
         val packageInstallerLists = listOf("com.android.packageinstaller", "com.google.android.packageinstaller")
         val installerPackager = packageInstallerLists.filter{
             val i = Intent()
+            i.setPackage(it)
             context.packageManager.resolveActivity(i, Intent.FLAG_ACTIVITY_NEW_TASK) != null
         }.firstOrNull()
 
