@@ -28,7 +28,7 @@ android {
         onVariants { variant ->
             variant.outputs.forEach { output ->
                 if (output is com.android.build.api.variant.impl.VariantOutputImpl) {
-                    output.outputFileName = "${appName}-${SimpleDateFormat("dd-MM-yyyy-hhmmss").format(Date())}-${variant.name}.apk"
+                    output.outputFileName = "${appName}-${defaultConfig.versionName}-${SimpleDateFormat("dd-MM-yyyy-hhmmss").format(Date())}-${variant.name}.apk"
                 }
             }
         }
@@ -39,8 +39,8 @@ android {
         minSdk = 24
         //noinspection ExpiredTargetSdkVersion
         targetSdk = 28
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 101
+        versionName = "1.1"
 
     }
 
