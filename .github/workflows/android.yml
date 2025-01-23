@@ -38,6 +38,8 @@ jobs:
       run: chmod +x gradlew
     - name: Build with Gradle
       run: ./gradlew BuildAll
+    - name: Release with Gradle
+      run: ./gradlew :app:assembleRelease
 
     - name: Upload APK Release - ${{ env.repository_name }}
       uses: actions/upload-artifact@v4
