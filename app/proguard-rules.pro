@@ -24,6 +24,5 @@
     *;
 }
 
--keep class android.** {
-    *;
-}
+-keep class android.content.** { *; }
+-keep class androidx.core.content.FileProvider { *; }

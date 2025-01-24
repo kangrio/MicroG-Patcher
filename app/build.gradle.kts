@@ -39,8 +39,8 @@ android {
         minSdk = 24
         //noinspection ExpiredTargetSdkVersion
         targetSdk = 28
-        versionCode = 101
-        versionName = "1.1"
+        versionCode = 102
+        versionName = "1.2"
 
     }
 
@@ -69,7 +69,7 @@ android {
 }
 
 dependencies {
-    implementation(libs.support.core.utils)
+    implementation(libs.androidx.core.ktx)
     implementation(libs.apksig)
     implementation(libs.arsclib)
     implementation(libs.baksmali)
